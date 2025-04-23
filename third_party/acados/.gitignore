@@ -1,5 +1,5 @@
 acados_repo/
-lib
+#lib
 !x86_64/
 !larch64/
 !aarch64/
