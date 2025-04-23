@@ -1,0 +1,36 @@
+name: Sync to Target Repository
+
+on:
+ push:
+  branches:
+#   - master
+#   - br_v0.9.6
+#   - br_v0.9.7
+   - br_v0.9.8
+   - test
+# workflow_dispatch:
+
+jobs:
+ sync:
+  runs-on: ubuntu-latest
+  steps:
+   - name: Check out the source repository
+     uses: actions/checkout@v2
+   - name: Setup Git
+     run: |
+      git config --global user.email "apc24pilot@gmail.com"
+      git config --global user.name "APC2-4Gr"
+   - name: clone openpilot
+     run: |
+      cd ..
+      git clone -b ${GITHUB_REF#refs/heads/} https://${{ secrets.TARGET_REPO_TOKEN }}@github.com/apc24/openpilot.git
+      ls
+      rsync -av --exclude='.git/' --exclude='.github' --exclude='.gitmodules' --exclude='.lfsconfig' --delete APC_openpilot/ openpilot/
+      cd openpilot
+      git add .
+      if ! git diff --cached --quiet; then  # 変更がある場合のみ
+        git commit -m 'modify'
+        git push
+      else
+        echo "No changes to commit."
+      fi
