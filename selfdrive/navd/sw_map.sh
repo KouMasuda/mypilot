@@ -2,7 +2,7 @@ echo APC_openpilotフォルダで以下のコマンドで実行することを�
 echo source selfdrive/navd/sw_map.sh
 
 
-SCRIPT_DIR="selfdrive/navd"
+SCRIPT_DIR="/home/kou/osm/APC_openpilot/selfdrive/navd"
 
 
 echo -n "Which map do you use? [1:MapBox / 2:OpenStreetMap]: "
