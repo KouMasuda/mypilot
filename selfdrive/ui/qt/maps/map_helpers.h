@@ -13,7 +13,8 @@
 #include "common/transformations/orientation.hpp"
 #include "cereal/messaging/messaging.h"
 
-const QString MAPTILER_TOKEN = "APC24_MAPTILER_KEY";
+const QString MAPTILER_TOKEN = "";
+const QString MAPBOX_TOKEN = "";  // Mapbox APIキーをここに設定
 const QString MAPS_HOST = util::getenv("MAPS_HOST", MAPTILER_TOKEN.isEmpty() ? "https://maps.comma.ai" : "https://api.maptiler.com").c_str();
 const QString MAPS_CACHE_PATH = "/data/mbgl-cache-navd.db";
 

@@ -48,7 +48,11 @@ class RouteEngine:
 
     self.reroute_counter = 0
 
-    if "MAPTILER_TOKEN" in os.environ:
+    # ナビルート用にMapboxを使用
+    if "MAPBOX_TOKEN" in os.environ:
+      self.mapbox_token = os.environ["MAPBOX_TOKEN"]
+      self.mapbox_host = "https://api.mapbox.com"
+    elif "MAPTILER_TOKEN" in os.environ:
       self.mapbox_token = os.environ["MAPTILER_TOKEN"]
       self.mapbox_host = "https://api.maptiler.com"
     else:
