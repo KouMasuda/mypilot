@@ -16,11 +16,13 @@ if __name__ == "__main__":
     }
     params.put("NavDestination", json.dumps(dest))
     params.remove("NavDestinationWaypoints")
+    print(f"Destination set to: {dest['latitude']}, {dest['longitude']}")
   else:
-    print("Setting to Taco Bell")
+    print("Setting to Taco Bell - MapTiler Compatible")
     dest = {
       "latitude": 32.71160109904473,
       "longitude": -117.12556569985693,
+      "place_name": "Taco Bell"
     }
     params.put("NavDestination", json.dumps(dest))
 
@@ -29,5 +31,6 @@ if __name__ == "__main__":
     ]
     params.put("NavDestinationWaypoints", json.dumps(waypoints))
 
-    print(dest)
-    print(waypoints)
+    print(f"Destination: {dest}")
+    print(f"Waypoints: {waypoints}")
+    print("Navigation: Mapbox | Maps: MapTiler (if available)")

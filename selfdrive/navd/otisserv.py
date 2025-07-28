@@ -21,16 +21,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from cgi import parse_header, parse_multipart
-from urllib.parse import parse_qs, unquote
 import json
-import requests
 import math
+from cgi import parse_header, parse_multipart
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, unquote
+
+import requests
+
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.realtime import set_core_affinity
 from openpilot.common.swaglog import cloudlog
+
 params = Params()
 
 hostName = ""
@@ -175,6 +178,14 @@ class OtisServ(BaseHTTPRequestHandler):
         return
       params.put('CustomMapboxTokenSk', token)
 
+    # MapTiler token input
+    if postvars is not None and "maptiler_token_val" in postvars:
+      if postvars.get("maptiler_token_val")[0] == "":
+        self.display_page_maptiler_token()
+        return
+      token = postvars.get("maptiler_token_val")[0]
+      params.put('CustomMapTilerTokenSk', token)
+
     # nav confirmed
     if postvars is not None:
       if "lat" in postvars and postvars.get("lat")[0] != "" and "lon" in postvars and postvars.get("lon")[0] != "":
@@ -300,6 +311,12 @@ class OtisServ(BaseHTTPRequestHandler):
       return token.rstrip('\x00')
     return None
 
+  def get_maptiler_token(self):
+    token = params.get("CustomMapTilerTokenSk", encoding='utf8')
+    if token is not None and token != "":
+      return token.rstrip('\x00')
+    return None
+
   def get_last_lon_lat(self):
     last_pos = Params().get("LastGPSPosition")
     if last_pos is not None and last_pos != "":
@@ -309,6 +326,10 @@ class OtisServ(BaseHTTPRequestHandler):
 
   def display_page_gmap_key(self):
     self.wfile.write(bytes(self.get_parsed_template("body", {"{{content}}": self.get_parsed_template("gmap/key_input")}), "utf-8"))
+
+  def display_page_maptiler_token(self, msg=""):
+    content = self.get_parsed_template("maptiler_token_input", {"{{msg}}": msg})
+    self.wfile.write(bytes(self.get_parsed_template("body", {"{{content}}": content}), "utf-8"))
 
   def display_page_amap_key(self):
     self.wfile.write(bytes(self.get_parsed_template("body", {"{{content}}": self.get_parsed_template("amap/key_input")}), "utf-8"))
@@ -323,7 +344,24 @@ class OtisServ(BaseHTTPRequestHandler):
     self.wfile.write(bytes(self.get_parsed_template("body", {"{{content}}": self.get_parsed_template("addr_input", {"{{msg}}": msg})}), "utf-8"))
 
   def display_page_nav_confirmation(self, addr, lon, lat):
-    content = self.get_parsed_template("addr_input", {"{{msg}}": ""}) + self.get_parsed_template("nav_confirmation", {"{{token}}": self.get_public_token(), "{{lon}}": lon, "{{lat}}": lat, "{{addr}}": addr})
+    # Use MapTiler if available, otherwise fallback to Mapbox
+    maptiler_token = self.get_maptiler_token()
+    if maptiler_token:
+      # MapTiler Static Maps API format
+      static_map_url = f"https://api.maptiler.com/maps/streets-v2/static/{lon},{lat},14,0/300x300@2x.png?key={maptiler_token}&markers={lon},{lat}"
+      token = maptiler_token
+    else:
+      # Mapbox Static Images API format (original)
+      static_map_url = f"https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/pin-s-l+000({lon},{lat})/{lon},{lat},14/300x300?access_token={self.get_public_token()}"
+      token = self.get_public_token()
+    
+    content = self.get_parsed_template("addr_input", {"{{msg}}": ""}) + self.get_parsed_template("nav_confirmation", {
+      "{{static_map_url}}": static_map_url,
+      "{{token}}": token, 
+      "{{lon}}": lon, 
+      "{{lat}}": lat, 
+      "{{addr}}": addr
+    })
     self.wfile.write(bytes(self.get_parsed_template("body", {"{{content}}": content }), "utf-8"))
 
   def display_page_gmap(self):
@@ -343,12 +381,18 @@ class OtisServ(BaseHTTPRequestHandler):
   def query_addr(self, addr):
     if addr == "":
       return None, None, None
-    query = "https://api.mapbox.com/geocoding/v5/mapbox.places/" + unquote(addr) + ".json?access_token=" + self.get_public_token() + "&limit=1"
+    
+    # Use Mapbox for geocoding
+    public_token = self.get_public_token()
+    if not public_token:
+      return None, None, None
+      
+    query = "https://api.mapbox.com/geocoding/v5/mapbox.places/" + unquote(addr) + ".json?access_token=" + public_token + "&limit=1"
     # focus on place around last gps position
     last_pos = Params().get("LastGPSPosition")
     if last_pos is not None and last_pos != "":
       l = json.loads(last_pos)
-      query += "&proximity=%s,%s" % (l["longitude"], l["latitude"])
+      query += f"&proximity={l['longitude']},{l['latitude']}"
 
     r = requests.get(query)
     if r.status_code != 200:

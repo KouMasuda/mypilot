@@ -1,4 +1,5 @@
-<div><img src="https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/pin-s-l+000({{lon}},{{lat}})/{{lon}},{{lat}},14/300x300?access_token={{token}}" /></div>
+<!-- Static map display uses MapTiler if available, otherwise Mapbox -->
+<div><img src="{{static_map_url}}" /></div>
 <div style="padding: 5px; font-size: 10px;">{{addr}}</div>
 <form name="navForm" method="post">
     <fieldset class="uk-fieldset">

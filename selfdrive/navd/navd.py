@@ -11,11 +11,15 @@ from cereal import log
 from openpilot.common.api import Api
 from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
-from openpilot.selfdrive.navd.helpers import (Coordinate, coordinate_from_param,
-                                    distance_along_geometry, maxspeed_to_ms,
-                                    minimum_distance,
-                                    parse_banner_instructions)
 from openpilot.common.swaglog import cloudlog
+from openpilot.selfdrive.navd.helpers import (
+  Coordinate,
+  coordinate_from_param,
+  distance_along_geometry,
+  maxspeed_to_ms,
+  minimum_distance,
+  parse_banner_instructions,
+)
 
 REROUTE_DISTANCE = 25
 MANEUVER_TRANSITION_THRESHOLD = 10
@@ -51,6 +55,8 @@ class RouteEngine:
 
     self.api = None
     self.mapbox_token = None
+    
+    # Navigation uses Mapbox only
     if "MAPBOX_TOKEN" in os.environ:
       self.mapbox_token = os.environ["MAPBOX_TOKEN"]
       self.mapbox_host = "https://api.mapbox.com"
@@ -125,6 +131,11 @@ class RouteEngine:
     if lang is not None:
       lang = lang.replace('main_', '')
 
+    # Navigation uses Mapbox only
+    self._calculate_route_mapbox(destination, lang)
+
+  def _calculate_route_mapbox(self, destination, lang):
+    """Calculate route using Mapbox Directions API"""
     token = self.mapbox_token
     if token is None:
       token = self.api.get_token()
@@ -157,6 +168,10 @@ class RouteEngine:
 
     coords_str = ';'.join([f'{lon},{lat}' for lon, lat in coords])
     url = self.mapbox_host + '/directions/v5/mapbox/driving-traffic/' + coords_str
+    self._execute_route_request(url, params)
+
+  def _execute_route_request(self, url, params):
+    """Execute the route request and parse response"""
     try:
       resp = requests.get(url, params=params, timeout=10)
       if resp.status_code != 200:
