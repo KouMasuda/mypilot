@@ -37,32 +37,62 @@ def setup_api_keys():
     else:
         print("   - MapTiler key skipped")
     
-    # Mapbox API Key  
-    print("\n2. Mapbox API Key Setup (for navigation and geocoding)")
-    print("   Get your key from: https://mapbox.com")
-    mapbox_key = input("   Enter your Mapbox API key (or press Enter to skip): ").strip()
+    # Mapbox Public Token (pk.)
+    print("\n2. Mapbox Public Token Setup (starts with 'pk.')")
+    print("   Get your key from: https://mapbox.com → Account → Access tokens")
+    print("   Use the 'Default public token' or create a new public token")
+    mapbox_public_key = input("   Enter your Mapbox PUBLIC token (pk.xxx): ").strip()
     
-    if mapbox_key:
-        try:
-            params.put('CustomMapboxTokenSk', mapbox_key)
-            print("   ✓ Mapbox API key saved successfully!")
-        except Exception as e:
-            print(f"   ✗ Error saving Mapbox key: {e}")
+    if mapbox_public_key:
+        if mapbox_public_key.startswith('pk.'):
+            try:
+                params.put('CustomMapboxTokenPk', mapbox_public_key)
+                print("   ✓ Mapbox public token saved successfully!")
+            except Exception as e:
+                print(f"   ✗ Error saving Mapbox public token: {e}")
+        else:
+            print("   ✗ Error: Mapbox public token must start with 'pk.'")
     else:
-        print("   - Mapbox key skipped")
+        print("   - Mapbox public token skipped")
+
+    # Mapbox Secret Token (sk.)  
+    print("\n3. Mapbox Secret Token Setup (starts with 'sk.')")
+    print("   Get your key from: https://mapbox.com → Account → Access tokens")
+    print("   Create a secret token with appropriate scopes")
+    mapbox_secret_key = input("   Enter your Mapbox SECRET token (sk.xxx): ").strip()
+    
+    if mapbox_secret_key:
+        if mapbox_secret_key.startswith('sk.'):
+            try:
+                params.put('CustomMapboxTokenSk', mapbox_secret_key)
+                print("   ✓ Mapbox secret token saved successfully!")
+            except Exception as e:
+                print(f"   ✗ Error saving Mapbox secret token: {e}")
+        else:
+            print("   ✗ Error: Mapbox secret token must start with 'sk.'")
+    else:
+        print("   - Mapbox secret token skipped")
     
     # Verify settings
-    print("\n3. Verification:")
+    print("\n4. Verification:")
     try:
         saved_maptiler = params.get('CustomMapTilerTokenSk', encoding='utf8')
-        saved_mapbox = params.get('CustomMapboxTokenSk', encoding='utf8')
+        saved_mapbox_public = params.get('CustomMapboxTokenPk', encoding='utf8')
+        saved_mapbox_secret = params.get('CustomMapboxTokenSk', encoding='utf8')
         
         print(f"   MapTiler key: {'✓ Set' if saved_maptiler else '✗ Not set'}")
-        print(f"   Mapbox key: {'✓ Set' if saved_mapbox else '✗ Not set'}")
+        print(f"   Mapbox public token: {'✓ Set' if saved_mapbox_public else '✗ Not set'}")
+        print(f"   Mapbox secret token: {'✓ Set' if saved_mapbox_secret else '✗ Not set'}")
         
-        if saved_maptiler or saved_mapbox:
-            print("\n✓ API key configuration completed!")
+        if saved_maptiler and saved_mapbox_public and saved_mapbox_secret:
+            print("\n✓ All API keys configured successfully!")
             print("Your mypilot is now ready to use.")
+        elif saved_maptiler or saved_mapbox_public or saved_mapbox_secret:
+            print("\n⚠ Some API keys are missing.")
+            print("For full functionality, you need:")
+            print("  - MapTiler key (for map display)")
+            print("  - Mapbox public token (for basic map features)")
+            print("  - Mapbox secret token (for navigation and geocoding)")
         else:
             print("\n⚠ No API keys were configured.")
             print("You can run this script again anytime to set them up.")
