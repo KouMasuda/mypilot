@@ -56,17 +56,29 @@ class RouteEngine:
     self.api = None
     self.mapbox_token = None
     
-    # Navigation uses Mapbox only
-    if "MAPBOX_TOKEN" in os.environ:
+    # Priority: Environment variables > Device params > Default comma.ai
+    # First check environment variables
+    if "MAPBOX_TOKEN" in os.environ and os.environ["MAPBOX_TOKEN"]:
       self.mapbox_token = os.environ["MAPBOX_TOKEN"]
       self.mapbox_host = "https://api.mapbox.com"
+      cloudlog.info("Using MAPBOX_TOKEN from environment")
     else:
-      self.api = Api(self.params.get("DongleId", encoding='utf8'))
-      self.mapbox_host = "https://maps.comma.ai"
-
-    if self.mapbox_token != "" and self.params.get("CustomMapboxTokenSk") is not None:
-      self.mapbox_token = self.params.get("CustomMapboxTokenSk")
-      self.mapbox_host = "https://api.mapbox.com"
+      # Check device params
+      custom_token = self.params.get("CustomMapboxTokenSk")
+      if custom_token is not None:
+        try:
+          self.mapbox_token = custom_token.decode('utf8') if isinstance(custom_token, bytes) else custom_token
+          self.mapbox_host = "https://api.mapbox.com"
+          cloudlog.info("Using CustomMapboxTokenSk from device params")
+        except Exception:
+          cloudlog.warning("Failed to decode CustomMapboxTokenSk")
+          self.mapbox_token = None
+      
+      # Fallback to comma.ai service
+      if not self.mapbox_token:
+        self.api = Api(self.params.get("DongleId", encoding='utf8'))
+        self.mapbox_host = "https://maps.comma.ai"
+        cloudlog.info("Using comma.ai navigation service")
 
   def update(self):
     self.sm.update(0)
