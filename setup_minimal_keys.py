@@ -72,8 +72,20 @@ def setup_minimal_keys():
         print(f"   ✗ Error setting bypass: {e}")
         return False
     
+    # Enable OsmLocal to always use offline OSM maps (always set to 1)
+    print("\n4. Enabling OSM Local mode (automatic)...")
+    try:
+        params.put('OsmLocal', '1')
+        print("   ✓ OsmLocal automatically enabled permanently!")
+        print("   ℹ This ensures offline OSM maps are always available")
+    except Exception as e:
+        print(f"   ✗ Error enabling OsmLocal: {e}")
+        # Don't return False here since this is not critical for basic functionality
+        print("   ⚠ Continuing without OsmLocal (navigation will still work)")
+    
     print("\n✓ Minimal API key configuration completed!")
     print("Your mypilot should now work with MapTiler and Mapbox navigation.")
+    print("OSM Local mode is enabled for offline map functionality.")
     
     return True
 
