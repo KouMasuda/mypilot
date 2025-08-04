@@ -1,37 +1,15 @@
 #!/usr/bin/env python3
 
 # OSM Models Downloader for mypilot
-# Downloads required AI models for OSM functionality
+# DEPRECATED: Use sunnypilot's UI instead for model downloads
+# This script is kept for reference and emergency use only
 
 import os
 import sys
+import json
 from pathlib import Path
 
 import requests
-
-# Add openpilot to path
-sys.path.append('/data/openpilot')
-
-try:
-    from openpilot.common.params import Params
-except ImportError:
-    print("Error: Could not import openpilot.common.params")
-    print("Make sure mypilot is properly installed in /data/openpilot")
-    sys.exit(1)
-
-# Model download URLs (these are examples - actual URLs may vary)
-MODELS_INFO = {
-    'supercombo.onnx': {
-        'url': 'https://github.com/commaai/openpilot/releases/download/v0.9.4/supercombo.onnx',
-        'size_mb': 50,
-        'description': 'Main driving model'
-    },
-    'dmonitoring_model.onnx': {
-        'url': 'https://github.com/commaai/openpilot/releases/download/v0.9.4/dmonitoring_model.onnx',
-        'size_mb': 5,
-        'description': 'Driver monitoring model'
-    }
-}
 
 def get_models_directory():
     """Get the appropriate models directory for current platform"""
@@ -45,174 +23,169 @@ def check_internet_connection():
     try:
         response = requests.get('https://www.google.com', timeout=5)
         return response.status_code == 200
-    except:
+    except Exception:
         return False
 
-def download_model(model_name, model_info, models_dir):
-    """Download a single model file"""
-    model_path = os.path.join(models_dir, model_name)
-    
-    # Check if model already exists
-    if os.path.exists(model_path):
-        size_mb = os.path.getsize(model_path) / (1024*1024)
-        print(f"✓ {model_name} already exists ({size_mb:.1f} MB)")
-        return True
-    
-    print(f"⬇️  Downloading {model_name} ({model_info['size_mb']} MB)...")
-    print(f"   {model_info['description']}")
-    
+def fetch_latest_models_info():
+    """Fetch latest models information from sunnypilot API"""
     try:
-        response = requests.get(model_info['url'], stream=True, timeout=30)
+        response = requests.get("https://docs.sunnypilot.ai/models_v5.json", timeout=10)
         response.raise_for_status()
-        
-        # Create directory if it doesn't exist
-        os.makedirs(models_dir, exist_ok=True)
-        
-        # Download with progress
-        with open(model_path, 'wb') as f:
-            total_size = int(response.headers.get('content-length', 0))
-            downloaded = 0
-            
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    
-                    if total_size > 0:
-                        progress = (downloaded / total_size) * 100
-                        print(f"\r   Progress: {progress:.1f}%", end='', flush=True)
-            
-            print()  # New line after progress
-        
-        print(f"✅ {model_name} downloaded successfully")
-        return True
-        
+        return response.json()
     except Exception as e:
-        print(f"❌ Failed to download {model_name}: {e}")
-        # Clean up partial download
-        if os.path.exists(model_path):
-            os.remove(model_path)
-        return False
+        print(f"❌ Failed to fetch latest models info: {e}")
+        return None
 
-def download_all_models():
-    """Download all required models"""
+def show_recommended_method():
+    """Show the recommended way to download models"""
     print("========================================")
-    print("OSM Models Downloader")
+    print("🔄 MODEL DOWNLOAD - RECOMMENDED METHOD")
     print("========================================")
-    
-    # Check internet connection
-    if not check_internet_connection():
-        print("❌ No internet connection available")
-        print("💡 Connect to WiFi or cellular data and try again")
-        return False
-    
-    print("✅ Internet connection available")
-    
-    models_dir = get_models_directory()
-    print(f"📁 Models directory: {models_dir}")
-    
-    # Download each model
-    success_count = 0
-    total_count = len(MODELS_INFO)
-    
-    for model_name, model_info in MODELS_INFO.items():
-        if download_model(model_name, model_info, models_dir):
-            success_count += 1
-    
-    # Summary
-    print("\n========================================")
-    print("Download Summary")
-    print("========================================")
-    
-    if success_count == total_count:
-        print(f"🎉 All {total_count} models downloaded successfully!")
-        print("✅ OSM models are ready for use")
-        return True
-    else:
-        print(f"⚠️  Downloaded {success_count}/{total_count} models")
-        print("❌ Some models failed to download")
-        print("💡 Check internet connection and try again")
-        return False
-
-def show_models_info():
-    """Show information about available models"""
-    print("========================================")
-    print("Available OSM Models")
-    print("========================================")
-    
-    total_size = 0
-    for model_name, model_info in MODELS_INFO.items():
-        print(f"📦 {model_name}")
-        print(f"   • Size: {model_info['size_mb']} MB")
-        print(f"   • Description: {model_info['description']}")
-        print(f"   • URL: {model_info['url']}")
-        print()
-        total_size += model_info['size_mb']
-    
-    print(f"📊 Total download size: {total_size} MB")
-    print("💡 These models are required for OSM Local functionality")
+    print("📱 Use the sunnypilot UI instead:")
+    print("   1. Go to Settings → Device → Models")
+    print("   2. Press 'SELECT' next to 'Current Model'")
+    print("   3. Choose from available model bundles")
+    print("   4. Download will start automatically")
+    print()
+    print("🌐 Models are now sourced from:")
+    print("   https://docs.sunnypilot.ai/models_v5.json")
+    print()
+    print("✅ Benefits of using UI:")
+    print("   • Latest model versions")
+    print("   • Hash verification")
+    print("   • Progress tracking")
+    print("   • Automatic metadata download")
+    print("   • Model bundle management")
 
 def check_existing_models():
     """Check which models are already present"""
     print("========================================")
-    print("Existing Models Check")
+    print("📦 EXISTING MODELS CHECK")
     print("========================================")
     
     models_dir = get_models_directory()
     
     if not os.path.exists(models_dir):
         print(f"❌ Models directory does not exist: {models_dir}")
+        print("💡 Create it by downloading models through the UI")
         return
     
     print(f"📁 Checking: {models_dir}")
     
-    existing_files = [f for f in os.listdir(models_dir) if f.endswith('.onnx')]
+    all_files = [f for f in os.listdir(models_dir) if os.path.isfile(os.path.join(models_dir, f))]
+    onnx_files = [f for f in all_files if f.endswith('.onnx')]
     
-    if not existing_files:
-        print("❌ No ONNX models found")
+    if not all_files:
+        print("❌ No model files found")
         return
     
-    print(f"✅ Found {len(existing_files)} ONNX model(s):")
+    print(f"✅ Found {len(all_files)} file(s) total:")
+    print(f"   📊 ONNX models: {len(onnx_files)}")
+    print(f"   📄 Other files: {len(all_files) - len(onnx_files)}")
+    print()
     
-    for file in existing_files:
+    for file in all_files:
         file_path = os.path.join(models_dir, file)
         size_mb = os.path.getsize(file_path) / (1024*1024)
         
-        # Check if it's a known model
-        if file in MODELS_INFO:
-            print(f"  ✅ {file} ({size_mb:.1f} MB) - {MODELS_INFO[file]['description']}")
+        if file.endswith('.onnx'):
+            print(f"  🧠 {file} ({size_mb:.1f} MB)")
+        elif file.endswith('.pkl'):
+            print(f"  📋 {file} ({size_mb:.1f} MB) - Metadata")
+        elif file.endswith('.thneed'):
+            print(f"  ⚡ {file} ({size_mb:.1f} MB) - GPU optimized")
+        elif file.endswith('.dlc'):
+            print(f"  � {file} ({size_mb:.1f} MB) - DSP optimized")
         else:
-            print(f"  📦 {file} ({size_mb:.1f} MB) - Unknown model")
+            print(f"  📄 {file} ({size_mb:.1f} MB)")
+
+def show_api_info():
+    """Show information about the sunnypilot models API"""
+    print("========================================")
+    print("🌐 SUNNYPILOT MODELS API INFO")
+    print("========================================")
+    
+    if not check_internet_connection():
+        print("❌ No internet connection - cannot fetch API info")
+        return
+    
+    print("🔍 Fetching latest model information...")
+    models_data = fetch_latest_models_info()
+    
+    if not models_data:
+        print("❌ Failed to fetch models information")
+        return
+    
+    print("✅ Successfully connected to sunnypilot API")
+    print()
+    print("📊 Available model bundles:")
+    
+    if isinstance(models_data, dict):
+        for bundle_name, bundle_info in models_data.items():
+            print(f"   📦 {bundle_name}")
+            if isinstance(bundle_info, dict) and 'models' in bundle_info:
+                models = bundle_info['models']
+                print(f"      • Models: {len(models)}")
+                for model in models[:3]:  # Show first 3 models
+                    if isinstance(model, dict):
+                        model_type = model.get('type', 'unknown')
+                        print(f"        - {model_type}")
+                if len(models) > 3:
+                    print(f"        - ... and {len(models) - 3} more")
+            print()
+
+def emergency_download_notice():
+    """Show emergency download information"""
+    print("========================================")
+    print("🚨 EMERGENCY DOWNLOAD INFO")
+    print("========================================")
+    print("⚠️  This script no longer downloads models directly")
+    print("🔄 For emergency model download:")
+    print()
+    print("1. Use SSH/ADB to access device")
+    print("2. Navigate to: /data/media/0/models/")
+    print("3. Download manually with curl/wget:")
+    print()
+    print("   Example commands:")
+    print("   cd /data/media/0/models/")
+    print("   curl -O [model_url_from_api]")
+    print()
+    print("🌐 Get URLs from: https://docs.sunnypilot.ai/models_v5.json")
+    print("� But seriously, use the UI instead! 😊")
 
 if __name__ == "__main__":
-    # Check if running on comma device or development environment
-    if not (os.path.exists('/data/openpilot') or os.path.exists(os.path.expanduser('~/.comma'))):
-        print("Error: This script should be run on a Comma device or development environment")
-        sys.exit(1)
-    
-    print("OSM Models Manager")
-    print("==================")
-    print("1) Check existing models")
-    print("2) Show available models info")
-    print("3) Download all models")
-    print("4) Exit")
+    print("🌞 SUNNYPILOT MODELS MANAGER")
+    print("============================")
+    print()
+    print("📢 IMPORTANT: This script is deprecated!")
+    print("   Use the sunnypilot UI for model downloads")
+    print()
+    print("Available options:")
+    print("1) 📱 Show recommended download method")
+    print("2) 📦 Check existing models")
+    print("3) 🌐 Show API information")
+    print("4) 🚨 Emergency download info")
+    print("5) ❌ Exit")
+    print()
     
     try:
-        choice = input("Enter your choice (1-4): ").strip()
+        choice = input("Enter your choice (1-5): ").strip()
     except KeyboardInterrupt:
         print("\nOperation cancelled.")
         sys.exit(0)
     
+    print()
+    
     if choice == '1':
-        check_existing_models()
+        show_recommended_method()
     elif choice == '2':
-        show_models_info()
+        check_existing_models()
     elif choice == '3':
-        success = download_all_models()
-        if not success:
-            sys.exit(1)
+        show_api_info()
     elif choice == '4':
-        print("Goodbye!")
+        emergency_download_notice()
+    elif choice == '5':
+        print("👋 Goodbye! Use the UI for model downloads!")
     else:
-        print("Invalid choice.")
-        sys.exit(1)
+        print("❌ Invalid choice.")
+        show_recommended_method()
