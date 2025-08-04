@@ -23,6 +23,7 @@
 
 import json
 import math
+import os
 from cgi import parse_header, parse_multipart
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, unquote
@@ -312,6 +313,12 @@ class OtisServ(BaseHTTPRequestHandler):
     return None
 
   def get_maptiler_token(self):
+    # Priority: Environment variable > Device params
+    token = os.environ.get("MAPTILER_TOKEN")
+    if token and token.strip():
+      return token.strip()
+    
+    # Fallback to device params
     token = params.get("CustomMapTilerTokenSk", encoding='utf8')
     if token is not None and token != "":
       return token.rstrip('\x00')
