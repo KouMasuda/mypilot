@@ -127,7 +127,9 @@ def check_models_status():
     print("========================================")
     
     # Check models directory
+    builtin_models_path = '/data/openpilot/selfdrive/modeld/models/'
     models_paths = [
+        builtin_models_path,  # Check built-in models first
         '/data/media/0/models/',
         os.path.expanduser('~/.comma/media/0/models/')
     ]

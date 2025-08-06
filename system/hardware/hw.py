@@ -66,6 +66,13 @@ class Paths:
 
   @staticmethod
   def model_root() -> str:
+    # Use built-in models directory instead of /data/media/0/models
+    from pathlib import Path
+    builtin_models_path = Path(__file__).parent.parent.parent / "selfdrive" / "modeld" / "models"
+    if builtin_models_path.exists():
+      return str(builtin_models_path)
+    
+    # Fallback to original paths if built-in models don't exist
     if PC:
       return str(Path(Paths.comma_home()) / "media" / "0" / "models")
     else:
