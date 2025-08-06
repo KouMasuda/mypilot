@@ -4,12 +4,13 @@
 # DEPRECATED: Use sunnypilot's UI instead for model downloads
 # This script is kept for reference and emergency use only
 
+import json
 import os
 import sys
-import json
 from pathlib import Path
 
 import requests
+
 
 def get_models_directory():
     """Get the appropriate models directory for current platform"""
