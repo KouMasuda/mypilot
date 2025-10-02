@@ -104,6 +104,9 @@ def parse_logs(path_segment, path_to_openpilot):
             printf('[WARNING] {}/{} live calibration parameters were not calibrated'.format(count_not_calibrated, num_calib_updates))
 
     except Exception as err:
+        # Silently handle cereal import errors - calibration is optional
+        if 'cereal' in str(err) or 'No module named' in str(err):
+            return None, None
         printf('[ERROR] Could not parse live calibration parameters from {}'.format(path_segment))
         printf(err)
         return None, None

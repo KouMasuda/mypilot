@@ -222,6 +222,9 @@ class CommaDataset(IterableDataset):
                 printf('Failed to read segment video:', self.hevc_file_paths[segment_idx])
                 raise err
             
+            # Get actual frame dimensions dynamically
+            frame_height, frame_width = yuv_frame2.shape
+            
             # TODO: (for further optimization) check if model can handle images pre-processed through (shorter) path2.
             # path1 and path2 look identical when saved to a PNG, but have some 
             # structured differences (to see, print the flattened difference between the two)
@@ -236,7 +239,7 @@ class CommaDataset(IterableDataset):
 
                 segment_finished = sequence_idx == n_seqs-1
 
-                yuv_frame_seq = np.zeros((self.seq_len + 1, 1311, 1164), dtype=np.uint8)
+                yuv_frame_seq = np.zeros((self.seq_len + 1, frame_height, frame_width), dtype=np.uint8)
                 yuv_frame_seq[0] = yuv_frame2
 
                 # start iteration from 1 because we already read 1 frame before

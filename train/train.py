@@ -91,8 +91,13 @@ def path_kl_div_loss(mean1, mean2, std1, std2):
     scratch :Laplace or gaussian likelihood
     model distillation: gaussian or laplace, KL divergence
     """
-    d1 = torch.distributions.laplace.Laplace(mean1, std1)
-    d2 = torch.distributions.laplace.Laplace(mean2, std2)
+    # Clamp scale parameters to ensure they are positive for Laplace distribution
+    eps = 1e-6  # Small epsilon to avoid exactly zero values
+    std1_clamped = torch.clamp(std1, min=eps)
+    std2_clamped = torch.clamp(std2, min=eps)
+    
+    d1 = torch.distributions.laplace.Laplace(mean1, std1_clamped)
+    d2 = torch.distributions.laplace.Laplace(mean2, std2_clamped)
     loss = torch.distributions.kl.kl_divergence(d1, d2).sum(dim=2).sum(dim=1).mean(dim=0)
     return loss
 
@@ -355,8 +360,14 @@ def visualize_predictions(model, device, train_segment_for_viz, val_segment_for_
             for t_idx in range(rgb_frames.shape[0]):
                 inputs = {
                     "input_imgs": input_frames[t_idx : t_idx + 1],
-                    "desire": desire,
+                    "big_input_imgs": input_frames[t_idx : t_idx + 1],  # v0.9.6 requires this
+                    "desire": desire.unsqueeze(1).expand(-1, 100, -1),  # Shape: [1, 100, 8]
                     "traffic_convention": traffic_convention,
+                    "lateral_control_params": torch.zeros(1, 2, device=device),  # Shape: [1, 2]
+                    "prev_desired_curv": torch.zeros(1, 100, 1, device=device),  # Shape: [1, 100, 1]
+                    "nav_features": torch.zeros(1, 256, device=device),  # Shape: [1, 256]
+                    "nav_instructions": torch.zeros(1, 150, device=device),  # Shape: [1, 150]
+                    "features_buffer": torch.zeros(1, 99, 512, device=device),  # Shape: [1, 99, 512]
                     'initial_state': recurr_input,
                 }
 
@@ -499,10 +510,19 @@ def train_batch(
     batch_loss = 0.0
 
     for i in range(seq_len):
+        # Get current batch size for tensor shape
+        batch_size_curr = stacked_frames.shape[0]
+        
         inputs_to_pretained_model = {
             "input_imgs": stacked_frames[:, i, :, :, :],
-            "desire": desire,
+            "big_input_imgs": stacked_frames[:, i, :, :, :],  # v0.9.6 requires this
+            "desire": desire.unsqueeze(1).expand(-1, 100, -1),  # Shape: [batch, 100, 8]
             "traffic_convention": traffic_convention,
+            "lateral_control_params": torch.zeros(batch_size_curr, 2, device=device),  # Shape: [batch, 2]
+            "prev_desired_curv": torch.zeros(batch_size_curr, 100, 1, device=device),  # Shape: [batch, 100, 1]  
+            "nav_features": torch.zeros(batch_size_curr, 256, device=device),  # Shape: [batch, 256]
+            "nav_instructions": torch.zeros(batch_size_curr, 150, device=device),  # Shape: [batch, 150]
+            "features_buffer": torch.zeros(batch_size_curr, 99, 512, device=device),  # Shape: [batch, 99, 512]
             'initial_state': recurr_input.clone(),  # TODO: why are we cloning recurr_input in 3 places (here, line 428 and line 439?
         }
 
@@ -535,10 +555,28 @@ def train_batch(
             complete_batch_loss.backward(retain_graph=True)
 
     with Timing(timings, 'clip_gradients'):
-        torch.nn.utils.clip_grad_norm_(model.parameters(), run.config.grad_clip)
+        # NaN勾配のチェックと対処
+        has_nan_grad = False
+        for param in model.parameters():
+            if param.grad is not None and torch.isnan(param.grad).any():
+                has_nan_grad = True
+                print(f"WARNING: NaN gradients detected! Zeroing gradients.")
+                param.grad.zero_()
+        
+        # より強力な勾配クリッピング（NaN対策）
+        if has_nan_grad:
+            print("Skipping optimizer step due to NaN gradients")
+        else:
+            # 通常の勾配クリッピング（より保守的な値）
+            max_norm = min(run.config.grad_clip, 1.0)  # 最大でも1.0に制限
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
 
     with Timing(timings, 'optimize_step'):
-        optimizer.step()
+        # NaN勾配がない場合のみoptimizer stepを実行
+        if not has_nan_grad:
+            optimizer.step()
+        else:
+            optimizer.zero_grad()  # NaN勾配をクリア
 
     loss = complete_batch_loss.detach()  # loss for one iteration
     return loss, recurr_out.detach()
@@ -559,10 +597,19 @@ def validate_batch(model, val_stacked_frames, val_plans, val_plans_probs, recurr
     val_batch_loss = 0.0
 
     for i in range(seq_len):
+        # Get current batch size for tensor shape  
+        batch_size_val = val_input.shape[0]
+        
         val_inputs_to_pretained_model = {
             "input_imgs": val_input[:, i, :, :, :],
-            "desire": desire,
+            "big_input_imgs": val_input[:, i, :, :, :],  # v0.9.6 requires this
+            "desire": desire.unsqueeze(1).expand(-1, 100, -1),  # Shape: [batch, 100, 8]
             "traffic_convention": traffic_convention,
+            "lateral_control_params": torch.zeros(batch_size_val, 2, device=device),  # Shape: [batch, 2]
+            "prev_desired_curv": torch.zeros(batch_size_val, 100, 1, device=device),  # Shape: [batch, 100, 1]
+            "nav_features": torch.zeros(batch_size_val, 256, device=device),  # Shape: [batch, 256]
+            "nav_instructions": torch.zeros(batch_size_val, 150, device=device),  # Shape: [batch, 150]
+            "features_buffer": torch.zeros(batch_size_val, 99, 512, device=device),  # Shape: [batch, 99, 512]
             "initial_state": recurr_input,
         }
 
@@ -757,11 +804,22 @@ if __name__ == "__main__":
     printf('Batches in val_loader:', val_loader_len)
 
     printf("=>Loading the model")
-    comma_model = load_trainable_model(path_to_supercombo, trainable_layers=pathplan_layer_names)
+    # Use ONNX Runtime wrapper instead of onnx2pytorch
+    from model import load_onnx_runtime_model
+    comma_model = load_onnx_runtime_model(path_to_supercombo)
     comma_model = comma_model.to(device)
 
     wandb.watch(comma_model)  # Log the gradients
 
+    # Debug: Check model parameters
+    param_list = list(comma_model.parameters())
+    print(f"Model parameters count: {len(param_list)}")
+    if param_list:
+        total_params = sum(p.numel() for p in param_list)
+        print(f"Total trainable parameters: {total_params}")
+    else:
+        print("WARNING: No trainable parameters found!")
+    
     param_group = comma_model.parameters()
     optimizer = topt.Adam(param_group, lr, weight_decay=l2_lambda)
     scheduler = topt.lr_scheduler.ReduceLROnPlateau(

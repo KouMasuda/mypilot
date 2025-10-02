@@ -1,5 +1,4 @@
 import onnx
-from onnx2pytorch import ConvertModel
 import torch
 import torch.nn as nn
 import onnxruntime as rt
@@ -8,6 +7,81 @@ import os
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORIGINAL_MODEL = os.path.join(parent_dir, 'common/models/supercombo.onnx')
+
+
+class PureONNXModel(nn.Module):
+    """純粋なONNXモデル（学習不要、蒸留用）"""
+    
+    def __init__(self, onnx_model_path):
+        super().__init__()
+        
+        # ONNXランタイムセッション（最適化設定）
+        sess_options = rt.SessionOptions()
+        sess_options.intra_op_num_threads = 1
+        sess_options.inter_op_num_threads = 1
+        sess_options.enable_mem_pattern = False
+        sess_options.enable_cpu_mem_arena = False
+        
+        self.ort_session = rt.InferenceSession(
+            onnx_model_path, 
+            sess_options,
+            providers=['CPUExecutionProvider']
+        )
+        
+        # 入力仕様を取得
+        self.input_specs = {spec.name: spec for spec in self.ort_session.get_inputs()}
+        
+        print("Pure ONNX Model:")
+        print(f"  ONNX inputs: {list(self.input_specs.keys())}")
+        print(f"  No trainable parameters (distillation target only)")
+    
+    def forward(self, **inputs):
+        """ONNX推論のみ（勾配なし）"""
+        
+        # PyTorchテンソルをnumpy配列に変換（ONNX用）
+        onnx_inputs = {}
+        for name, tensor in inputs.items():
+            if name in self.input_specs:
+                # 入力データの異常値チェック
+                if torch.isnan(tensor).any():
+                    print(f"WARNING: Input {name} contains NaN values before ONNX!")
+                    tensor = torch.nan_to_num(tensor, nan=0.0)
+                
+                if torch.isinf(tensor).any():
+                    print(f"WARNING: Input {name} contains infinite values before ONNX!")
+                    tensor = torch.nan_to_num(tensor, posinf=1e6, neginf=-1e6)
+                
+                # 極端な値のクリッピング
+                if tensor.abs().max() > 1e6:
+                    print(f"WARNING: Input {name} contains extreme values, clipping...")
+                    tensor = torch.clamp(tensor, -1e6, 1e6)
+                
+                numpy_array = tensor.detach().cpu().numpy().astype(np.float16)
+                onnx_inputs[name] = numpy_array
+        
+        # ONNX推論実行
+        import time
+        start_time = time.time()
+        onnx_outputs = self.ort_session.run(None, onnx_inputs)
+        inference_time = time.time() - start_time
+        
+        # 出力をPyTorchテンソルに変換
+        onnx_output = torch.from_numpy(onnx_outputs[0].astype(np.float32))
+        
+        # 異常値の後処理
+        if torch.isnan(onnx_output).any():
+            print(f"WARNING: ONNX output contains NaN values!")
+            onnx_output = torch.nan_to_num(onnx_output, nan=0.0)
+        if torch.isinf(onnx_output).any():
+            print(f"WARNING: ONNX output contains infinite values!")
+            onnx_output = torch.nan_to_num(onnx_output, posinf=1e6, neginf=-1e6)
+        
+        # 元のデバイスに戻す
+        if inputs:
+            device = next(iter(inputs.values())).device
+            onnx_output = onnx_output.to(device)
+        
+        return onnx_output
 
 
 class ONNXWithAdapter(nn.Module):
@@ -91,12 +165,6 @@ class ONNXWithAdapter(nn.Module):
         # 出力をPyTorchテンソルに変換
         onnx_output = torch.from_numpy(onnx_outputs[0].astype(np.float32))
         
-        # NaN/inf チェック
-        if torch.isnan(onnx_output).any():
-            print(f"WARNING: ONNX output contains NaN values!")
-        if torch.isinf(onnx_output).any():
-            print(f"WARNING: ONNX output contains infinite values!")
-        
         # ONNX出力の後処理とチェック
         if torch.isnan(onnx_output).any():
             print(f"WARNING: ONNX output contains NaN values!")
@@ -140,105 +208,11 @@ class ONNXWithAdapter(nn.Module):
             final_output = final_output + dummy_grad
         
         return final_output
-    
-    def parameters(self, recurse=True):
-        """学習可能なパラメータのみを返す"""
-        return self.adapter.parameters(recurse=recurse)
-    
-    def named_parameters(self, prefix='', recurse=True):
-        """学習可能なパラメータのみを返す"""
-        for name, param in self.adapter.named_parameters(prefix=prefix, recurse=recurse):
-            yield name, param
 
+    def parameters(self):
+        """アダプターのパラメータのみを返す"""
+        return self.adapter.parameters()
 
-def reinitialize_weights(layer_weight):
-    torch.nn.init.xavier_uniform_(layer_weight)
-
-
-def load_onnx_runtime_model(path_to_supercombo):
-    """ONNXランタイムベースのモデルを読み込み"""
-    return ONNXWithAdapter(path_to_supercombo)
-
-
-def load_trainable_model(path_to_supercombo, trainable_layers=[]):
-
-    onnx_model = onnx.load(path_to_supercombo)
-    model = ConvertModel(onnx_model, experimental=True)  # pretrained_model
-    
-    # Debug: Print expected input names
-    print("Model expected input names:", model.input_names if hasattr(model, 'input_names') else "Not available")
-
-    # enable batch_size > 1 for onnx2pytorch (with error handling)
-    try:
-        model.Constant_1047.constant[0] = -1
-        model.Constant_1049.constant[0] = -1
-        model.Constant_1051.constant[0] = -1
-        model.Constant_1053.constant[0] = -1
-        model.Constant_1057.constant[0] = -1
-        model.Constant_1059.constant[0] = -1
-    except AttributeError as e:
-        print(f"Warning: Could not modify batch size constants: {e}")
-        print("Model may not support batch_size > 1")
-
-    # ensure immutability https://github.com/ToriML/onnx2pytorch/pull/38
-    try:
-        model.Elu_907.inplace = False
-    except AttributeError as e:
-        print(f"Warning: Could not modify Elu layer: {e}")
-
-    # reinitialize trainable layers
-    for layer_name, layer in model.named_children():
-        # TODO: support layers other than Linear?
-        if isinstance(layer, torch.nn.Linear) and layer_name in trainable_layers:
-            reinitialize_weights(layer.weight)
-            layer.bias.data.fill_(0.01)
-
-    # Convert model to float32 to avoid dtype mismatch issues
-    model = model.float()
-    
-    # freeze other layers
-    for name, param in model.named_parameters():
-        name_layer = name.split(".")[0]
-        if name_layer in trainable_layers:
-            param.requires_grad = True
-        else:
-            param.requires_grad = False
-
-    return model
-
-
-def load_inference_model(path_to_model):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    if path_to_model.endswith('.onnx'):
-        onnx_graph = onnx.load(path_to_model)
-        output_names = [node.name for node in onnx_graph.graph.output]
-        model = rt.InferenceSession(path_to_model, providers=['CPUExecutionProvider'])
-
-        def run_model(inputs):
-            outs =  model.run(output_names, inputs)[0]
-            recurrent_state = outs[:, -512:]
-            return outs, recurrent_state
-
-
-    elif path_to_model.endswith('.pth'):
-
-        model = load_trainable_model(ORIGINAL_MODEL)
-        model.load_state_dict(torch.load(path_to_model))
-        model.eval()
-        model = model.to(device)
-
-        def run_model(inputs):
-            with torch.no_grad():
-                inputs = {k: torch.from_numpy(v).to(device) for k, v in inputs.items()}
-                outs = model(**inputs)
-                recurrent_state = outs[:, -512:]
-                return outs.cpu().numpy(), recurrent_state
-
-    return model, run_model
-
-
-if __name__ == "__main__":
-    pathplan_layer_names  = ["Gemm_959", "Gemm_981","Gemm_983","Gemm_1036"]
-    path_to_supercombo = '../common/models/supercombo.onnx'
-    model = load_trainable_model(pathplan_layer_names, path_to_supercombo)
+    def named_parameters(self):
+        """アダプターのパラメータのみを返す"""
+        return self.adapter.named_parameters()

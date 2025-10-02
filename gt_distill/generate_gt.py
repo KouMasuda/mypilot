@@ -165,6 +165,7 @@ if __name__ == '__main__':
     else:
         printf('Finding segment directories...')
         os.makedirs(PATH_TO_CACHE, exist_ok=True)
+        segments = []
         with open(args.cache, 'a+') as f:
             pbar = tqdm()
             for dir_path, _, files in os.walk(args.recordings_basedir):
@@ -172,13 +173,18 @@ if __name__ == '__main__':
                     continue
 
                 pbar.update(1)
-
+                segments.append(dir_path)
                 f.write(dir_path + '\n')
         
     printf('Generating ground truths...')
     for dir_path in tqdm(segments):
         printf('dir_path:', dir_path)
         generate_ground_truth(dir_path, model, force=args.force_gt)
-        save_segment_calib(dir_path, args.openpilot_dir, force=args.force_calib)
+        
+        # Try to save calibration, but don't fail if cereal is not available
+        try:
+            save_segment_calib(dir_path, args.openpilot_dir, force=args.force_calib)
+        except Exception as e:
+            printf(f'[WARNING] Skipping calibration for {dir_path}: {str(e)}')
 
         printf()

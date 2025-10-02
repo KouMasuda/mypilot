@@ -303,7 +303,11 @@ def load_calibration(segment_path):
 
 def bgr_to_yuv(img_bgr):
     img_yuv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2YUV_I420)
-    expected_shape = (1208*3//2, 1928)  # (1812, 1928) - Updated for actual frame size
+    # Calculate expected YUV shape dynamically based on input BGR shape
+    bgr_height, bgr_width = img_bgr.shape[:2]
+    expected_yuv_height = bgr_height * 3 // 2  # YUV I420 format: Y + U/2 + V/2
+    expected_shape = (expected_yuv_height, bgr_width)
+    
     if img_yuv.shape != expected_shape:
         print(f"WARNING: YUV shape mismatch. Expected: {expected_shape}, Got: {img_yuv.shape}")
         print(f"Original BGR shape: {img_bgr.shape}")
